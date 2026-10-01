@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bet Desk</title>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6a64; --line: #e3e1da;
+    --accent: #2f5bd3; --accent-ink: #fff; --ok: #1f7a4d; --warn: #9a6200; --bad: #b3261e;
+    --pill: #efede6; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151514; --card: #1e1e1c; --ink: #ecebe6; --muted: #9c9a92; --line: #33322e;
+      --accent: #7c9cff; --accent-ink: #0d1024; --ok: #5cc48f; --warn: #e0a43a; --bad: #ff8a80;
+      --pill: #2a2926; color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .mono { font-family: var(--mono); font-size: 0.88em; word-break: break-all; }
+  .top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+    padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--card); }
+  .brand { font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
+  .brand .sub { font-weight: 500; color: var(--muted); font-size: 14px; margin-left: 6px; }
+  .wallet { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  main { max-width: 920px; margin: 0 auto; padding: 20px 16px 80px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  h3 { font-size: 14px; margin: 18px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 13px; }
+  input, textarea, select { font: inherit; font-weight: 400; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; }
+  textarea { resize: vertical; }
+  button { font: inherit; font-weight: 600; font-size: 14px; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink); white-space: nowrap; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.danger { border-color: var(--bad); color: var(--bad); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > input { flex: 1; min-width: 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .span2 { grid-column: 1 / -1; }
+  @media (max-width: 640px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  .hint { font-weight: 400; color: var(--muted); font-size: 13px; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--pill); font-size: 13px; font-weight: 600; }
+  .pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tabs button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  tr.click { cursor: pointer; } tr.click:hover td { background: var(--pill); }
+  .tablewrap { overflow-x: auto; }
+  dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+  dl.kv dt { color: var(--muted); font-size: 13px; }
+  dl.kv dd { margin: 0; }
+  .you { color: var(--accent); font-weight: 700; font-size: 12px; margin-left: 6px; }
+  .past { color: var(--muted); }
+  .actions { display: flex; flex-direction: column; gap: 10px; }
+  .action { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .action .why { color: var(--muted); font-size: 13px; }
+  .notice { padding: 10px 12px; border-radius: 8px; background: var(--pill); font-size: 14px; margin-bottom: 12px; }
+  .match { color: var(--ok); font-weight: 600; } .nomatch { color: var(--bad); font-weight: 600; }
+  pre.terms { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin: 6px 0 0; font-family: var(--mono); font-size: 13px; }
+  #toasts { position: fixed; right: 16px; bottom: 16px; left: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
+  .toast { pointer-events: auto; max-width: 520px; background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+    border-radius: 8px; padding: 10px 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); font-size: 14px; word-break: break-word; }
+  .toast.err { border-left-color: var(--bad); } .toast.ok { border-left-color: var(--ok); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">Bet Desk <span class="sub">Sepolia</span></div>
+  <div class="wallet">
+    <span id="net" class="pill">Not connected</span>
+    <span id="acct" class="mono"></span>
+    <button id="connect" class="primary">Connect MetaMask</button>
+  </div>
+</header>
+
+<main>
+  <div id="no-wallet" class="notice" hidden>
+    MetaMask was not detected. You can still look up bets (read-only via a public Sepolia node), but creating and
+    settling bets needs MetaMask. Also note MetaMask does not inject into <code>file://</code> pages — serve this file from <code>http://localhost</code>.
+  </div>
+
+  <section class="card">
+    <div class="row" style="align-items:flex-end; flex-wrap:wrap">
+      <label style="flex:1; min-width:260px">BetFactory address on Sepolia
+        <input id="factory" class="mono" placeholder="0x…" autocomplete="off">
+      </label>
+      <button id="save-factory">Use this factory</button>
+    </div>
+    <div id="factory-status" class="hint" style="margin-top:6px"></div>
+  </section>
+
+  <nav class="tabs">
+    <button data-tab="create" class="on">Create bet</button>
+    <button data-tab="list">Bets</button>
+    <button data-tab="bet">Bet details</button>
+  </nav>
+
+  <!-- CREATE -->
+  <section id="tab-create" class="card tab">
+    <h2>Create a bet</h2>
+    <form id="create-form">
+      <div class="grid2">
+        <label>Bettor
+          <div class="row"><input id="c-bettor" class="mono" placeholder="0x…" autocomplete="off"><button type="button" data-me="c-bettor">Me</button></div>
+        </label>
+        <label>Taker
+          <div class="row"><input id="c-taker" class="mono" placeholder="0x…" autocomplete="off"><button type="button" data-me="c-taker">Me</button></div>
+        </label>
+        <label class="span2">Arbiter <span class="hint">Optional. Leave blank for no arbiter (then only a concession can pay out; otherwise both are refunded after the deadline).</span>
+          <input id="c-arbiter" class="mono" placeholder="blank = none" autocomplete="off">
+        </label>
+        <label>Bettor stake (ETH)<input id="c-bstake" inputmode="decimal" value="0.01"></label>
+        <label>Taker stake (ETH)<input id="c-tstake" inputmode="decimal" value="0.01"></label>
+        <div class="hint span2" id="c-odds"></div>
+        <label class="span2">Terms <span class="hint">Only the hash goes on-chain. Be precise: what counts, which source, which date and timezone, who wins in each case.</span>
+          <textarea id="c-terms" rows="3" placeholder="S&P 500 index official closing price on 2026-10-01 is below 7200.00 per S&P Dow Jones Indices; bettor wins if true, taker wins if false"></textarea>
+          <span class="hint mono" id="c-hash"></span>
+        </label>
+      </div>
+      <div class="grid3" style="margin-top:14px">
+        <label>Funding closes<input type="datetime-local" id="c-funding"></label>
+        <label>Event date <span class="hint">arbiter may rule from</span><input type="datetime-local" id="c-event"></label>
+        <label>Resolution deadline <span class="hint">then anyone can expire</span><input type="datetime-local" id="c-resolve"></label>
+      </div>
+      <div class="hint" id="c-windows" style="margin:10px 0 14px"></div>
+      <button type="submit" class="primary" id="c-submit">Create bet</button>
+    </form>
+  </section>
+
+  <!-- LIST -->
+  <section id="tab-list" class="card tab" hidden>
+    <div class="row" style="justify-content:space-between; flex-wrap:wrap; margin-bottom:10px">
+      <h2 style="margin:0">Bets</h2>
+      <div class="row">
+        <button id="list-mine">My bets</button>
+        <button id="list-all">Latest 25 (all)</button>
+      </div>
+    </div>
+    <div id="list-body" class="hint">Choose a list above.</div>
+  </section>
+
+  <!-- DETAIL -->
+  <section id="tab-bet" class="tab" hidden>
+    <div class="card">
+      <div class="row" style="flex-wrap:wrap">
+        <input id="open-addr" class="mono" placeholder="Bet contract address 0x…" autocomplete="off" style="flex:1; min-width:240px">
+        <button id="open-btn" class="primary">Open</button>
+      </div>
+    </div>
+    <div id="detail"></div>
+  </section>
+</main>
+
+<div id="toasts"></div>
+
+<script>
+const E = ethers;
+const SEPOLIA = 11155111n;
+const SEPOLIA_HEX = '0xaa36a7';
+const PUBLIC_RPC = 'https://ethereum-sepolia-rpc.publicnode.com';
+const EXPLORER = 'https://sepolia.etherscan.io';
+const STATES = ['Funding', 'Active', 'Resolved', 'Cancelled', 'Expired'];
+const STATE_CLASS = ['warn', 'ok', '', '', ''];
+
+const FACTORY_ABI = [
+  'function createBet(address _bettor, address _taker, address _arbiter, uint256 _bettorStake, uint256 _takerStake, bytes32 _betDetailsHash, uint256 _fundingWindow, uint256 _timeToEvent, uint256 _graceWindow) returns (address)',
+  'function allBets(uint256) view returns (address)',
+  'function betsByPlayer(address, uint256) view returns (address)',
+  'function betCount() view returns (uint256)',
+  'function betCountFor(address) view returns (uint256)',
+  'event BetCreated(address indexed bet, address indexed bettor, address indexed taker, address arbiter, uint256 bettorStake, uint256 takerStake, bytes32 betDetailsHash)',
+];
+const BET_ABI = [
+  'function bettor() view returns (address)',
+  'function taker() view returns (address)',
+  'function arbiter() view returns (address)',
+  'function bettorStake() view returns (uint256)',
+  'function takerStake() view returns (uint256)',
+  'function betDetailsHash() view returns (bytes32)',
+  'function fundingDeadline() view returns (uint256)',
+  'function eventDate() view returns (uint256)',
+  'function resolutionDeadline() view returns (uint256)',
+  'function state() view returns (uint8)',
+  'function deposited(address) view returns (uint256)',
+  'function pending(address) view returns (uint256)',
+  'function summary() view returns (uint8, uint256, uint256, uint256, uint256)',
+  'function deposit() payable',
+  'function cancel()',
+  'function concede()',
+  'function rule(address winner)',
+  'function expire()',
+  'function withdraw()',
+];
+
+// ---------------------------------------------------------------- helpers
+const $ = s => document.querySelector(s);
+const lc = a => (a || '').toLowerCase();
+const short = a => a ? a.slice(0, 6) + '…' + a.slice(-4) : '';
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtEth = wei => E.formatEther(wei) + ' ETH';
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+function rel(sec) {
+  const a = Math.abs(sec);
+  const s = a >= 86400 ? `${(a / 86400).toFixed(a >= 864000 ? 0 : 1)} days`
+          : a >= 3600 ? `${(a / 3600).toFixed(1)} hours`
+          : a >= 60 ? `${Math.round(a / 60)} min` : `${a} sec`;
+  return sec >= 0 ? `in ${s}` : `${s} ago`;
+}
+const fmtTime = (ts, now) => `${new Date(ts * 1000).toLocaleString()} <span class="hint">(${rel(ts - now)})</span>`;
+
+function toLocalInput(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function dtSeconds(sel) {
+  const v = $(sel).value;
+  if (!v) throw new Error('Fill in all three dates');
+  return Math.floor(new Date(v).getTime() / 1000);
+}
+function readAddr(sel, name) {
+  const v = $(sel).value.trim();
+  if (!E.isAddress(v)) throw new Error(`${name}: not a valid address`);
+  return E.getAddress(lc(v));
+}
+function errMsg(e) {
+  if (e?.code === 'ACTION_REJECTED') return 'Transaction rejected in MetaMask.';
+  return e?.reason || e?.shortMessage || e?.info?.error?.message || e?.message || String(e);
+}
+function toast(msg, kind = '', ms = 7000) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind;
+  el.innerHTML = msg;
+  $('#toasts').appendChild(el);
+  setTimeout(() => el.remove(), ms);
+}
+
+// ------------------------------------------------------------------ wallet
+let browserProvider = null, readProvider = null, signer = null, account = null, onSepolia = false;
+
+function reader() {
+  if (onSepolia && browserProvider) return browserProvider;
+  return readProvider ||= new E.JsonRpcProvider(PUBLIC_RPC, Number(SEPOLIA), { staticNetwork: true });
+}
+async function chainNow() {
+  return (await reader().getBlock('latest')).timestamp;
+}
+function requireSigner() {
+  if (!window.ethereum) throw new Error('MetaMask is required for transactions.');
+  if (!signer) throw new Error('Connect MetaMask first.');
+  if (!onSepolia) throw new Error('Switch MetaMask to the Sepolia network.');
+}
+
+async function connect(interactive) {
+  if (!window.ethereum) { toast('MetaMask not detected.', 'err'); return; }
+  if (interactive) await browserProvider.send('eth_requestAccounts', []);
+  const net = await browserProvider.getNetwork();
+  onSepolia = net.chainId === SEPOLIA;
+  if (!onSepolia && interactive) {
+    try {
+      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: SEPOLIA_HEX }] });
+      return; // chainChanged handler reloads the page
+    } catch (e) {
+      toast('Please switch MetaMask to Sepolia.', 'err');
+    }
+  }
+  signer = await browserProvider.getSigner();
+  account = await signer.getAddress();
+  renderWallet();
+}
+
+function renderWallet() {
+  const net = $('#net');
+  if (!account) { net.textContent = 'Not connected'; net.className = 'pill'; }
+  else if (onSepolia) { net.textContent = 'Sepolia'; net.className = 'pill ok'; }
+  else { net.textContent = 'Wrong network'; net.className = 'pill bad'; }
+  $('#acct').textContent = account ? short(account) : '';
+  $('#acct').title = account || '';
+  $('#connect').textContent = !account ? 'Connect MetaMask' : onSepolia ? 'Connected' : 'Switch to Sepolia';
+  $('#connect').disabled = !!(account && onSepolia);
+}
+
+// ----------------------------------------------------------------- factory
+function factoryAddr() {
+  const a = $('#factory').value.trim();
+  if (!E.isAddress(a)) throw new Error('Set a valid BetFactory address first.');
+  return E.getAddress(lc(a));
+}
+const factory = runner => new E.Contract(factoryAddr(), FACTORY_ABI, runner || reader());
+
+async function checkFactory() {
+  const st = $('#factory-status');
+  try {
+    const a = factoryAddr();
+    const code = await reader().getCode(a);
+    if (code === '0x') { st.innerHTML = '<span class="nomatch">No contract at this address on Sepolia.</span>'; return false; }
+    let n;
+    try {
+      n = await factory().betCount();
+    } catch {
+      let isBet = false;
+      try { await new E.Contract(a, BET_ABI, reader()).bettor(); isBet = true; } catch {}
+      st.innerHTML = isBet
+        ? `<span class="nomatch">This is a Bet contract, not a BetFactory.</span> Open it in the Bet details tab, or deploy BetFactory from Remix to create new bets here.`
+        : '<span class="nomatch">This contract is not a BetFactory.</span>';
+      if (isBet) $('#open-addr').value = a;
+      return false;
+    }
+    store.set('factory', a);
+    st.innerHTML = `<span class="match">Factory OK</span> · ${n} bet(s) created · <a href="${EXPLORER}/address/${a}" target="_blank" rel="noopener">Etherscan</a>`;
+    return true;
+  } catch (e) {
+    st.innerHTML = `<span class="nomatch">${esc(errMsg(e))}</span>`;
+    return false;
+  }
+}
+
+// ------------------------------------------------------------------ create
+function setDefaultDates() {
+  const now = Date.now();
+  $('#c-funding').value = toLocalInput(new Date(now + 1 * 86400e3));
+  $('#c-event').value = toLocalInput(new Date(now + 7 * 86400e3));
+  $('#c-resolve').value = toLocalInput(new Date(now + 10 * 86400e3));
+}
+
+function updateCreateHints() {
+  const terms = $('#c-terms').value;
+  $('#c-hash').textContent = terms ? 'hash: ' + E.id(terms) : '';
+  try {
+    const b = parseFloat($('#c-bstake').value), t = parseFloat($('#c-tstake').value);
+    $('#c-odds').textContent = b > 0 && t > 0
+      ? `Pot ${(b + t).toFixed(6).replace(/\.?0+$/, '')} ETH. Bettor risks ${b} to win ${t}; taker risks ${t} to win ${b}.`
+      : '';
+  } catch { $('#c-odds').textContent = ''; }
+  try {
+    const now = Date.now() / 1000;
+    const f = dtSeconds('#c-funding'), ev = dtSeconds('#c-event'), r = dtSeconds('#c-resolve');
+    const problems = [];
+    if (f <= now) problems.push('funding close must be in the future');
+    if (f > ev) problems.push('funding must close on or before the event date');
+    if (r - ev < 3600) problems.push('resolution deadline must be at least 1 hour after the event date');
+    $('#c-windows').innerHTML = problems.length
+      ? `<span class="nomatch">${esc(problems.join('; '))}</span>`
+      : `Funding window ${rel(Math.round(f - now)).replace('in ', '')}, grace window ${rel(r - ev).replace('in ', '')}. Times are relative to when the transaction is mined, so they may shift by a few seconds.`;
+  } catch { $('#c-windows').textContent = ''; }
+}
+
+async function onCreate(ev) {
+  ev.preventDefault();
+  const btn = $('#c-submit');
+  try {
+    requireSigner();
+    const f = factory(signer);
+    const bettor = readAddr('#c-bettor', 'Bettor');
+    const taker = readAddr('#c-taker', 'Taker');
+    const arbiter = $('#c-arbiter').value.trim() ? readAddr('#c-arbiter', 'Arbiter') : E.ZeroAddress;
+    if (lc(bettor) === lc(taker)) throw new Error('Bettor and taker must be different.');
+    if (arbiter !== E.ZeroAddress && (lc(arbiter) === lc(bettor) || lc(arbiter) === lc(taker)))
+      throw new Error('The arbiter cannot be one of the players.');
+    if (lc(account) !== lc(bettor) && lc(account) !== lc(taker))
+      throw new Error('Your connected account must be the bettor or the taker to create this bet.');
+
+    const bs = E.parseEther($('#c-bstake').value.trim() || '0');
+    const ts = E.parseEther($('#c-tstake').value.trim() || '0');
+    if (bs <= 0n || ts <= 0n) throw new Error('Both stakes must be greater than 0.');
+
+    const terms = $('#c-terms').value;
+    if (!terms.trim()) throw new Error('Write the bet terms.');
+    const hash = E.id(terms);
+
+    const now = await chainNow();
+    const fd = dtSeconds('#c-funding'), ed = dtSeconds('#c-event'), rd = dtSeconds('#c-resolve');
+    const fundingWindow = fd - now, timeToEvent = ed - now, grace = rd - ed;
+    if (fundingWindow <= 0) throw new Error('Funding close must be in the future.');
+    if (fundingWindow > timeToEvent) throw new Error('Funding must close on or before the event date.');
+    if (grace < 3600) throw new Error('Resolution deadline must be at least 1 hour after the event date.');
+
+    btn.disabled = true; btn.textContent = 'Confirm in MetaMask…';
+    const tx = await f.createBet(bettor, taker, arbiter, bs, ts, hash, fundingWindow, timeToEvent, grace);
+    btn.textContent = 'Waiting for confirmation…';
+    toast(`Create sent: <a href="${EXPLORER}/tx/${tx.hash}" target="_blank" rel="noopener">${short(tx.hash)}</a>`);
+    const rc = await tx.wait();
+
+    let betAddr = null;
+    for (const log of rc.logs) {
+      try {
+        const p = f.interface.parseLog(log);
+        if (p?.name === 'BetCreated') { betAddr = p.args.bet; break; }
+      } catch {}
+    }
+    if (!betAddr) throw new Error('Transaction mined but no BetCreated event found.');
+    store.set('terms:' + lc(betAddr), terms);
+    toast(`Bet created at <span class="mono">${betAddr}</span>`, 'ok');
+    showTab('bet');
+    $('#open-addr').value = betAddr;
+    await openBet(betAddr);
+  } catch (e) {
+    toast(esc(errMsg(e)), 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create bet';
+  }
+}
+
+// -------------------------------------------------------------------- list
+async function loadList(mode) {
+  const body = $('#list-body');
+  body.textContent = 'Loading…';
+  try {
+    const f = factory();
+    let calls = [];
+    if (mode === 'mine') {
+      if (!account) throw new Error('Connect MetaMask to see your bets.');
+      const n = Number(await f.betCountFor(account));
+      for (let i = n - 1; i >= 0; i--) calls.push(f.betsByPlayer(account, i));
+    } else {
+      const n = Number(await f.betCount());
+      for (let i = n - 1; i >= Math.max(0, n - 25); i--) calls.push(f.allBets(i));
+    }
+    const addrs = await Promise.all(calls);
+    if (!addrs.length) { body.textContent = 'No bets found.'; return; }
+    const now = await chainNow();
+    const rows = await Promise.all(addrs.map(async a => {
+      const b = new E.Contract(a, BET_ABI, reader());
+      const [st, bettor, taker, bs, ts, ed] = await Promise.all(
+        [b.state(), b.bettor(), b.taker(), b.bettorStake(), b.takerStake(), b.eventDate()]);
+      return { a, st: Number(st), bettor, taker, bs, ts, ed: Number(ed) };
+    }));
+    const who = x => esc(short(x)) + (account && lc(x) === lc(account) ? '<span class="you">you</span>' : '');
+    body.innerHTML = `<div class="tablewrap"><table>
+      <thead><tr><th>Bet</th><th>State</th><th>Bettor</th><th>Taker</th><th>Stakes</th><th>Event</th></tr></thead>
+      <tbody>${rows.map(r => `<tr class="click" data-addr="${r.a}">
+        <td class="mono">${short(r.a)}</td>
+        <td><span class="pill ${STATE_CLASS[r.st]}">${STATES[r.st]}</span></td>
+        <td class="mono">${who(r.bettor)}</td>
+        <td class="mono">${who(r.taker)}</td>
+        <td>${E.formatEther(r.bs)} / ${E.formatEther(r.ts)}</td>
+        <td>${new Date(r.ed * 1000).toLocaleDateString()} <span class="hint">${rel(r.ed - now)}</span></td>
+      </tr>`).join('')}</tbody></table></div>`;
+    body.querySelectorAll('tr.click').forEach(tr => tr.addEventListener('click', () => {
+      $('#open-addr').value = tr.dataset.addr;
+      showTab('bet');
+      openBet(tr.dataset.addr);
+    }));
+  } catch (e) {
+    body.innerHTML = `<span class="nomatch">${esc(errMsg(e))}</span>`;
+  }
+}
+
+// ------------------------------------------------------------------ detail
+let current = null;
+
+async function openBet(addr) {
+  const out = $('#detail');
+  try {
+    if (!E.isAddress(addr)) throw new Error('Not a valid address.');
+    addr = E.getAddress(lc(addr));
+    out.innerHTML = '<div class="card hint">Loading…</div>';
+    const r = reader();
+    if ((await r.getCode(addr)) === '0x') throw new Error('No contract at that address on Sepolia.');
+    const b = new E.Contract(addr, BET_ABI, r);
+    const [bettor, taker, arbiter, bs, ts, hash, fd, ed, rd, sum, now] = await Promise.all([
+      b.bettor(), b.taker(), b.arbiter(), b.bettorStake(), b.takerStake(), b.betDetailsHash(),
+      b.fundingDeadline(), b.eventDate(), b.resolutionDeadline(), b.summary(), chainNow()]);
+    let myDep = 0n, myPend = 0n;
+    if (account) [myDep, myPend] = await Promise.all([b.deposited(account), b.pending(account)]);
+    current = {
+      addr, bettor, taker, arbiter, bs, ts, hash,
+      fd: Number(fd), ed: Number(ed), rd: Number(rd), now,
+      state: Number(sum[0]), bDep: sum[1], tDep: sum[2], bPend: sum[3], tPend: sum[4], myDep, myPend,
+    };
+    renderDetail();
+  } catch (e) {
+    out.innerHTML = `<div class="card nomatch">${esc(errMsg(e))}</div>`;
+  }
+}
+
+function actionsFor(c) {
+  const me = lc(account);
+  const isB = !!me && me === lc(c.bettor), isT = !!me && me === lc(c.taker);
+  const isP = isB || isT;
+  const hasArb = c.arbiter !== E.ZeroAddress;
+  const isA = hasArb && !!me && me === lc(c.arbiter);
+  const S = c.state, now = c.now;
+  const myStake = isB ? c.bs : isT ? c.ts : 0n;
+  const conn = !signer ? 'Connect MetaMask' : !onSepolia ? 'Switch to Sepolia' : null;
+
+  const acts = [
+    {
+      id: 'deposit', label: isP ? `Deposit ${fmtEth(myStake)}` : 'Deposit', primary: true,
+      why: conn || (!isP ? 'Only the bettor or taker can deposit'
+        : S !== 0 ? 'Bet is no longer funding'
+        : now > c.fd ? 'Funding window has closed'
+        : c.myDep > 0n ? 'You have already deposited' : null),
+      confirm: `Deposit ${fmtEth(myStake)} into this bet?\n\nMake sure you have checked the terms against the on-chain hash first.`,
+      run: k => k.deposit({ value: myStake }),
+    },
+    {
+      id: 'cancel', label: 'Cancel & refund',
+      why: conn || (S !== 0 ? 'Only possible while funding'
+        : (now > c.fd || (isP && c.myDep > 0n)) ? null
+        : 'Only a player who has deposited, or anyone after funding closes'),
+      run: k => k.cancel(),
+    },
+    {
+      id: 'concede', label: 'Concede (pay the other player)', danger: true,
+      why: conn || (!isP ? 'Only a player can concede' : S !== 1 ? 'Only possible while active' : null),
+      confirm: 'Concede this bet?\n\nThe entire pot goes to the OTHER player. This cannot be undone.',
+      run: k => k.concede(),
+    },
+  ];
+  if (hasArb) acts.push({
+    id: 'rule', label: 'Rule winner', select: true,
+    why: conn || (!isA ? 'Only the arbiter can rule'
+      : S !== 1 ? 'Only possible while active'
+      : now < c.ed ? `Event date not reached (${rel(c.ed - now)})` : null),
+    confirm: () => `Rule ${$('#rule-winner').value} as the winner?\n\nThis is final.`,
+    run: k => k.rule($('#rule-winner').value),
+  });
+  acts.push(
+    {
+      id: 'expire', label: 'Expire & refund both',
+      why: conn || (S !== 1 ? 'Only possible while active'
+        : now <= c.rd ? `Resolution deadline not passed (${rel(c.rd - now)})` : null),
+      run: k => k.expire(),
+    },
+    {
+      id: 'withdraw', label: c.myPend > 0n ? `Withdraw ${fmtEth(c.myPend)}` : 'Withdraw', primary: c.myPend > 0n,
+      why: conn || (c.myPend === 0n ? 'Nothing to withdraw for your account' : null),
+      run: k => k.withdraw(),
+    },
+  );
+  return acts;
+}
+
+function renderDetail() {
+  const c = current;
+  const me = lc(account);
+  const tag = a => account && lc(a) === me ? '<span class="you">you</span>' : '';
+  const addrLink = a => `<a class="mono" href="${EXPLORER}/address/${a}" target="_blank" rel="noopener">${a}</a>${tag(a)}`;
+  const t = ts => `<span class="${ts < c.now ? 'past' : ''}">${fmtTime(ts, c.now)}</span>`;
+  const saved = store.get('terms:' + lc(c.addr));
+  const acts = actionsFor(c);
+
+  $('#detail').innerHTML = `
+    <div class="card">
+      <div class="row" style="justify-content:space-between; flex-wrap:wrap; margin-bottom:12px">
+        <h2 style="margin:0">Bet <span class="mono">${short(c.addr)}</span>
+          <span class="pill ${STATE_CLASS[c.state]}" style="margin-left:6px">${STATES[c.state]}</span></h2>
+        <div class="row">
+          <button id="share-btn">Copy share link</button>
+          <button id="refresh-btn">Refresh</button>
+        </div>
+      </div>
+      <dl class="kv">
+        <dt>Contract</dt><dd>${addrLink(c.addr)}</dd>
+        <dt>Bettor</dt><dd>${addrLink(c.bettor)}</dd>
+        <dt>Taker</dt><dd>${addrLink(c.taker)}</dd>
+        <dt>Arbiter</dt><dd>${c.arbiter === E.ZeroAddress ? '<span class="hint">none</span>' : addrLink(c.arbiter)}</dd>
+      </dl>
+
+      <h3>Money</h3>
+      <dl class="kv">
+        <dt>Bettor stake</dt><dd>${fmtEth(c.bs)} <span class="hint">· deposited ${fmtEth(c.bDep)}</span></dd>
+        <dt>Taker stake</dt><dd>${fmtEth(c.ts)} <span class="hint">· deposited ${fmtEth(c.tDep)}</span></dd>
+        <dt>Pot</dt><dd>${fmtEth(c.bs + c.ts)}</dd>
+        <dt>Pending payouts</dt><dd>bettor ${fmtEth(c.bPend)} · taker ${fmtEth(c.tPend)}</dd>
+      </dl>
+
+      <h3>Timeline</h3>
+      <dl class="kv">
+        <dt>Funding closes</dt><dd>${t(c.fd)}</dd>
+        <dt>Event date</dt><dd>${t(c.ed)}</dd>
+        <dt>Resolution deadline</dt><dd>${t(c.rd)}</dd>
+      </dl>
+    </div>
+
+    <div class="card">
+      <h2>Actions</h2>
+      <div class="actions">
+        ${acts.map(a => `<div class="action">
+          <button data-act="${a.id}" class="${a.danger ? 'danger' : a.primary ? 'primary' : ''}" ${a.why ? 'disabled' : ''}>${a.label}</button>
+          ${a.select ? `<select id="rule-winner" style="width:auto" ${a.why ? 'disabled' : ''}>
+              <option value="${c.bettor}">Bettor ${short(c.bettor)}</option>
+              <option value="${c.taker}">Taker ${short(c.taker)}</option></select>` : ''}
+          ${a.why ? `<span class="why">${esc(a.why)}</span>` : ''}
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Terms</h2>
+      <div class="hint">On-chain hash: <span class="mono">${c.hash}</span></div>
+      ${saved !== null && E.id(saved) === c.hash
+        ? `<div style="margin-top:8px"><span class="match">✓ Terms verified</span><pre class="terms">${esc(saved)}</pre></div>`
+        : ''}
+      <label style="margin-top:12px">Paste the agreed terms text to verify it matches exactly
+        <textarea id="verify-text" rows="3"></textarea>
+      </label>
+      <div id="verify-result" class="hint" style="margin-top:6px"></div>
+    </div>`;
+
+  $('#refresh-btn').onclick = () => openBet(c.addr);
+  $('#share-btn').onclick = shareLink;
+  $('#verify-text').oninput = verifyTerms;
+  if (pendingTerms) { $('#verify-text').value = pendingTerms; pendingTerms = null; verifyTerms(); }
+  document.querySelectorAll('[data-act]').forEach(btn => {
+    const a = acts.find(x => x.id === btn.dataset.act);
+    btn.onclick = () => runAction(a, btn);
+  });
+}
+
+function verifyTerms() {
+  const text = $('#verify-text').value;
+  const out = $('#verify-result');
+  if (!text) { out.textContent = ''; return; }
+  const h = E.id(text);
+  if (h === current.hash) {
+    store.set('terms:' + lc(current.addr), text);
+    out.innerHTML = '<span class="match">✓ Matches the on-chain hash. Saved in this browser.</span>';
+  } else {
+    out.innerHTML = `<span class="nomatch">✗ Does not match.</span> This text hashes to <span class="mono">${h}</span>. Every character counts, including spaces, capitals and line breaks.`;
+  }
+}
+
+async function shareLink() {
+  const p = new URLSearchParams();
+  p.set('factory', factoryAddr());
+  p.set('bet', current.addr);
+  const saved = store.get('terms:' + lc(current.addr));
+  if (saved !== null && E.id(saved) === current.hash) p.set('terms', saved);
+  const url = location.origin + location.pathname + '#' + p.toString();
+  try { await navigator.clipboard.writeText(url); toast('Share link copied. The terms are included so the other player can verify them.', 'ok'); }
+  catch { prompt('Copy this link:', url); }
+}
+
+async function runAction(a, btn) {
+  try {
+    requireSigner();
+    if (a.confirm) {
+      const msg = typeof a.confirm === 'function' ? a.confirm() : a.confirm;
+      if (!confirm(msg)) return;
+    }
+    const k = new E.Contract(current.addr, BET_ABI, signer);
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Confirm in MetaMask…';
+    const tx = await a.run(k);
+    btn.textContent = 'Waiting…';
+    toast(`${esc(label)} sent: <a href="${EXPLORER}/tx/${tx.hash}" target="_blank" rel="noopener">${short(tx.hash)}</a>`);
+    await tx.wait();
+    toast(`${esc(label)} confirmed.`, 'ok');
+  } catch (e) {
+    toast(esc(errMsg(e)), 'err');
+  }
+  await openBet(current.addr);
+}
+
+// -------------------------------------------------------------------- tabs
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(s => s.hidden = s.id !== 'tab-' + name);
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+}
+
+// -------------------------------------------------------------------- init
+let pendingTerms = null;
+
+async function init() {
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  $('#connect').onclick = () => connect(true).catch(e => toast(esc(errMsg(e)), 'err'));
+  $('#save-factory').onclick = checkFactory;
+  $('#create-form').addEventListener('submit', onCreate);
+  $('#create-form').addEventListener('input', updateCreateHints);
+  document.querySelectorAll('[data-me]').forEach(b => b.onclick = () => {
+    if (!account) return toast('Connect MetaMask first.', 'err');
+    $('#' + b.dataset.me).value = account;
+  });
+  $('#list-mine').onclick = () => loadList('mine');
+  $('#list-all').onclick = () => loadList('all');
+  $('#open-btn').onclick = () => openBet($('#open-addr').value.trim());
+  $('#open-addr').addEventListener('keydown', e => { if (e.key === 'Enter') openBet($('#open-addr').value.trim()); });
+
+  setDefaultDates();
+  updateCreateHints();
+
+  // Link fragment: #factory=0x..&bet=0x..&terms=...
+  const frag = new URLSearchParams(location.hash.slice(1));
+  $('#factory').value = frag.get('factory') || store.get('factory') || '';
+  pendingTerms = frag.get('terms');
+
+  if (window.ethereum) {
+    browserProvider = new E.BrowserProvider(window.ethereum);
+    window.ethereum.on?.('accountsChanged', () => location.reload());
+    window.ethereum.on?.('chainChanged', () => location.reload());
+    try {
+      const accts = await browserProvider.send('eth_accounts', []);
+      if (accts.length) await connect(false);
+    } catch {}
+  } else {
+    $('#no-wallet').hidden = false;
+  }
+  renderWallet();
+
+  if ($('#factory').value) await checkFactory();
+  if (frag.get('bet')) {
+    $('#open-addr').value = frag.get('bet');
+    showTab('bet');
+    await openBet(frag.get('bet'));
+  }
+}
+init();
+</script>
+</body>
+</html>
