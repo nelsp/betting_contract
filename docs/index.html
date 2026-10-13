@@ -291,8 +291,15 @@ function renderWallet() {
   else { net.textContent = 'Wrong network'; net.className = 'pill bad'; }
   $('#acct').textContent = account ? short(account) : '';
   $('#acct').title = account || '';
-  $('#connect').textContent = !account ? 'Connect MetaMask' : onSepolia ? 'Connected' : 'Switch to Sepolia';
-  $('#connect').disabled = !!(account && onSepolia);
+  $('#connect').textContent = !account ? 'Connect MetaMask' : onSepolia ? 'Change account' : 'Switch to Sepolia';
+  $('#connect').className = account && onSepolia ? '' : 'primary';
+}
+
+// MetaMask only exposes accounts the user has connected to this site, so switching
+// accounts inside MetaMask is not enough. This reopens its account picker.
+async function changeAccount() {
+  await window.ethereum.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] });
+  location.reload();
 }
 
 // ----------------------------------------------------------------- factory
@@ -591,6 +598,10 @@ function renderDetail() {
 
     <div class="card">
       <h2>Actions</h2>
+      ${account && ![c.bettor, c.taker, c.arbiter].some(a => lc(a) === me)
+        ? `<div class="notice">You're connected as <span class="mono">${account}</span>, which is not the bettor, taker or arbiter of this bet.
+           If you switched accounts in MetaMask, click <b>Change account</b> at the top and tick the account you want.</div>`
+        : ''}
       <div class="actions">
         ${acts.map(a => `<div class="action">
           <button data-act="${a.id}" class="${a.danger ? 'danger' : a.primary ? 'primary' : ''}" ${a.why ? 'disabled' : ''}>${a.label}</button>
@@ -680,7 +691,7 @@ let pendingTerms = null;
 
 async function init() {
   document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
-  $('#connect').onclick = () => connect(true).catch(e => toast(esc(errMsg(e)), 'err'));
+  $('#connect').onclick = () => (account && onSepolia ? changeAccount() : connect(true)).catch(e => toast(esc(errMsg(e)), 'err'));
   $('#save-factory').onclick = checkFactory;
   $('#create-form').addEventListener('submit', onCreate);
   $('#create-form').addEventListener('input', updateCreateHints);
