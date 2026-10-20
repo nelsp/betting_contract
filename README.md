@@ -4,6 +4,7 @@ A two-party ETH bet with an optional arbiter, plus **Bet Desk**, a web page for 
 
 - `revised_bet.sol`: the `Bet` contract and `BetFactory`
 - `docs/`: Bet Desk (served by GitHub Pages at https://nelsp.github.io/betting_contract/)
+- `MANUAL.md`: step-by-step guide to creating, funding, settling and collecting a bet
 
 ## Using Bet Desk
 1. Install MetaMask, switch it to the **Sepolia** test network, and get Sepolia ETH from a faucet.
