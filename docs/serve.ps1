@@ -13,19 +13,27 @@ $types = @{ '.html' = 'text/html; charset=utf-8'; '.js' = 'text/javascript'; '.c
 try {
     while ($listener.IsListening) {
         $ctx = $listener.GetContext()
-        $path = [Uri]::UnescapeDataString($ctx.Request.Url.AbsolutePath).TrimStart('/')
-        if ($path -eq '') { $path = 'index.html' }
-        $file = [IO.Path]::GetFullPath((Join-Path $root $path))
         $res = $ctx.Response
-        if ($file.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path $file -PathType Leaf)) {
-            $bytes = [IO.File]::ReadAllBytes($file)
-            $ext = [IO.Path]::GetExtension($file).ToLower()
-            $res.ContentType = if ($types.ContainsKey($ext)) { $types[$ext] } else { 'application/octet-stream' }
-            $res.OutputStream.Write($bytes, 0, $bytes.Length)
-        } else {
-            $res.StatusCode = 404
+        # One bad request (e.g. a dropped connection) must not stop the server.
+        try {
+            $path = [Uri]::UnescapeDataString($ctx.Request.Url.AbsolutePath).TrimStart('/')
+            if ($path -eq '') { $path = 'index.html' }
+            $file = [IO.Path]::GetFullPath((Join-Path $root $path))
+            if ($file.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path $file -PathType Leaf)) {
+                $bytes = [IO.File]::ReadAllBytes($file)
+                $ext = [IO.Path]::GetExtension($file).ToLower()
+                $res.ContentType = if ($types.ContainsKey($ext)) { $types[$ext] } else { 'application/octet-stream' }
+                $res.ContentLength64 = $bytes.Length
+                # HEAD requests get headers only; writing a body to them throws.
+                if ($ctx.Request.HttpMethod -ne 'HEAD') { $res.OutputStream.Write($bytes, 0, $bytes.Length) }
+            } else {
+                $res.StatusCode = 404
+            }
+        } catch {
+            Write-Host "Request failed: $($_.Exception.Message)"
+        } finally {
+            try { $res.Close() } catch {}
         }
-        $res.Close()
     }
 } finally {
     $listener.Stop()

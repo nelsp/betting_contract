@@ -77,7 +77,12 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand">Bet Desk <span class="sub">Sepolia</span></div>
+  <div class="brand">Bet Desk
+    <select id="network" class="sub" style="width:auto; margin-left:8px; padding:4px 8px" aria-label="Network">
+      <option value="sepolia">Sepolia testnet</option>
+      <option value="mainnet">Ethereum Mainnet</option>
+    </select>
+  </div>
   <div class="wallet">
     <span id="net" class="pill">Not connected</span>
     <span id="acct" class="mono"></span>
@@ -86,14 +91,18 @@
 </header>
 
 <main>
+  <div id="mainnet-warning" class="notice" style="border:1px solid var(--bad)" hidden>
+    <b class="nomatch">Ethereum Mainnet: real money.</b> Deposits use real ETH and every transaction costs real gas.
+    Mistakes cannot be undone. Make sure you trust the factory address and have verified the terms before depositing.
+  </div>
   <div id="no-wallet" class="notice" hidden>
-    MetaMask was not detected. You can still look up bets (read-only via a public Sepolia node), but creating and
+    MetaMask was not detected. You can still look up bets (read-only via a public node), but creating and
     settling bets needs MetaMask. Also note MetaMask does not inject into <code>file://</code> pages — serve this file from <code>http://localhost</code>.
   </div>
 
   <section class="card">
     <div class="row" style="align-items:flex-end; flex-wrap:wrap">
-      <label style="flex:1; min-width:260px">BetFactory address on Sepolia
+      <label style="flex:1; min-width:260px"><span>BetFactory address on <span class="net-name">Sepolia</span></span>
         <input id="factory" class="mono" placeholder="0x…" autocomplete="off">
       </label>
       <button id="save-factory">Use this factory</button>
@@ -167,10 +176,25 @@
 
 <script>
 const E = ethers;
-const SEPOLIA = 11155111n;
-const SEPOLIA_HEX = '0xaa36a7';
-const PUBLIC_RPC = 'https://ethereum-sepolia-rpc.publicnode.com';
-const EXPLORER = 'https://sepolia.etherscan.io';
+const NETWORKS = {
+  sepolia: {
+    key: 'sepolia', name: 'Sepolia', chainId: 11155111n, hex: '0xaa36a7',
+    rpcs: ['https://ethereum-sepolia-rpc.publicnode.com'], explorer: 'https://sepolia.etherscan.io',
+  },
+  mainnet: {
+    key: 'mainnet', name: 'Ethereum Mainnet', chainId: 1n, hex: '0x1',
+    rpcs: ['https://cloudflare-eth.com', 'https://eth.drpc.org', 'https://ethereum-rpc.publicnode.com'],
+    explorer: 'https://etherscan.io',
+  },
+};
+// The page works on one network at a time: from the share link, else the last choice, else Sepolia.
+const NET = (() => {
+  const fromLink = new URLSearchParams(location.hash.slice(1)).get('net');
+  let saved = null;
+  try { saved = localStorage.getItem('network'); } catch {}
+  return NETWORKS[fromLink] || NETWORKS[saved] || NETWORKS.sepolia;
+})();
+const EXPLORER = NET.explorer;
 const STATES = ['Funding', 'Active', 'Resolved', 'Cancelled', 'Expired'];
 const STATE_CLASS = ['warn', 'ok', '', '', ''];
 
@@ -251,11 +275,24 @@ function toast(msg, kind = '', ms = 7000) {
 }
 
 // ------------------------------------------------------------------ wallet
-let browserProvider = null, readProvider = null, signer = null, account = null, onSepolia = false;
+let browserProvider = null, readProvider = null, signer = null, account = null, onNet = false;
 
 function reader() {
-  if (onSepolia && browserProvider) return browserProvider;
-  return readProvider ||= new E.JsonRpcProvider(PUBLIC_RPC, Number(SEPOLIA), { staticNetwork: true });
+  if (onNet && browserProvider) return browserProvider;
+  // Read-only access when no wallet is on this network. Free public nodes come and go,
+  // so several are listed and the next one is tried if one fails or stalls.
+  if (!readProvider) {
+    const chain = E.Network.from(Number(NET.chainId));
+    const nodes = NET.rpcs.map(u => new E.JsonRpcProvider(u, chain, { staticNetwork: chain }));
+    readProvider = nodes.length === 1 ? nodes[0] : new E.FallbackProvider(
+      nodes.map((provider, i) => ({ provider, priority: i + 1, stallTimeout: 2000 })), chain, { quorum: 1 });
+  }
+  return readProvider;
+}
+const termsKey = addr => `terms:${NET.key}:${lc(addr)}`;
+function savedTerms(addr) {
+  // Sepolia terms saved before multi-network support used an unprefixed key.
+  return store.get(termsKey(addr)) ?? (NET.key === 'sepolia' ? store.get('terms:' + lc(addr)) : null);
 }
 async function chainNow() {
   return (await reader().getBlock('latest')).timestamp;
@@ -263,20 +300,20 @@ async function chainNow() {
 function requireSigner() {
   if (!window.ethereum) throw new Error('MetaMask is required for transactions.');
   if (!signer) throw new Error('Connect MetaMask first.');
-  if (!onSepolia) throw new Error('Switch MetaMask to the Sepolia network.');
+  if (!onNet) throw new Error(`Switch MetaMask to ${NET.name}.`);
 }
 
 async function connect(interactive) {
   if (!window.ethereum) { toast('MetaMask not detected.', 'err'); return; }
   if (interactive) await browserProvider.send('eth_requestAccounts', []);
   const net = await browserProvider.getNetwork();
-  onSepolia = net.chainId === SEPOLIA;
-  if (!onSepolia && interactive) {
+  onNet = net.chainId === NET.chainId;
+  if (!onNet && interactive) {
     try {
-      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: SEPOLIA_HEX }] });
+      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: NET.hex }] });
       return; // chainChanged handler reloads the page
     } catch (e) {
-      toast('Please switch MetaMask to Sepolia.', 'err');
+      toast(`Please switch MetaMask to ${NET.name}.`, 'err');
     }
   }
   signer = await browserProvider.getSigner();
@@ -287,12 +324,12 @@ async function connect(interactive) {
 function renderWallet() {
   const net = $('#net');
   if (!account) { net.textContent = 'Not connected'; net.className = 'pill'; }
-  else if (onSepolia) { net.textContent = 'Sepolia'; net.className = 'pill ok'; }
+  else if (onNet) { net.textContent = NET.name; net.className = NET.key === 'mainnet' ? 'pill warn' : 'pill ok'; }
   else { net.textContent = 'Wrong network'; net.className = 'pill bad'; }
   $('#acct').textContent = account ? short(account) : '';
   $('#acct').title = account || '';
-  $('#connect').textContent = !account ? 'Connect MetaMask' : onSepolia ? 'Change account' : 'Switch to Sepolia';
-  $('#connect').className = account && onSepolia ? '' : 'primary';
+  $('#connect').textContent = !account ? 'Connect MetaMask' : onNet ? 'Change account' : `Switch to ${NET.name}`;
+  $('#connect').className = account && onNet ? '' : 'primary';
 }
 
 // MetaMask only exposes accounts the user has connected to this site, so switching
@@ -315,7 +352,7 @@ async function checkFactory() {
   try {
     const a = factoryAddr();
     const code = await reader().getCode(a);
-    if (code === '0x') { st.innerHTML = '<span class="nomatch">No contract at this address on Sepolia.</span>'; return false; }
+    if (code === '0x') { st.innerHTML = `<span class="nomatch">No contract at this address on ${NET.name}.</span>`; return false; }
     let n;
     try {
       n = await factory().betCount();
@@ -328,7 +365,7 @@ async function checkFactory() {
       if (isBet) $('#open-addr').value = a;
       return false;
     }
-    store.set('factory', a);
+    store.set('factory:' + NET.key, a);
     st.innerHTML = `<span class="match">Factory OK</span> · ${n} bet(s) created · <a href="${EXPLORER}/address/${a}" target="_blank" rel="noopener">Etherscan</a>`;
     return true;
   } catch (e) {
@@ -411,7 +448,7 @@ async function onCreate(ev) {
       } catch {}
     }
     if (!betAddr) throw new Error('Transaction mined but no BetCreated event found.');
-    store.set('terms:' + lc(betAddr), terms);
+    store.set(termsKey(betAddr), terms);
     toast(`Bet created at <span class="mono">${betAddr}</span>`, 'ok');
     showTab('bet');
     $('#open-addr').value = betAddr;
@@ -478,7 +515,7 @@ async function openBet(addr) {
     addr = E.getAddress(lc(addr));
     out.innerHTML = '<div class="card hint">Loading…</div>';
     const r = reader();
-    if ((await r.getCode(addr)) === '0x') throw new Error('No contract at that address on Sepolia.');
+    if ((await r.getCode(addr)) === '0x') throw new Error(`No contract at that address on ${NET.name}.`);
     const b = new E.Contract(addr, BET_ABI, r);
     const [bettor, taker, arbiter, bs, ts, hash, fd, ed, rd, sum, now] = await Promise.all([
       b.bettor(), b.taker(), b.arbiter(), b.bettorStake(), b.takerStake(), b.betDetailsHash(),
@@ -504,7 +541,7 @@ function actionsFor(c) {
   const isA = hasArb && !!me && me === lc(c.arbiter);
   const S = c.state, now = c.now;
   const myStake = isB ? c.bs : isT ? c.ts : 0n;
-  const conn = !signer ? 'Connect MetaMask' : !onSepolia ? 'Switch to Sepolia' : null;
+  const conn = !signer ? 'Connect MetaMask' : !onNet ? `Switch to ${NET.name}` : null;
 
   const acts = [
     {
@@ -560,7 +597,7 @@ function renderDetail() {
   const tag = a => account && lc(a) === me ? '<span class="you">you</span>' : '';
   const addrLink = a => `<a class="mono" href="${EXPLORER}/address/${a}" target="_blank" rel="noopener">${a}</a>${tag(a)}`;
   const t = ts => `<span class="${ts < c.now ? 'past' : ''}">${fmtTime(ts, c.now)}</span>`;
-  const saved = store.get('terms:' + lc(c.addr));
+  const saved = savedTerms(c.addr);
   const acts = actionsFor(c);
 
   $('#detail').innerHTML = `
@@ -641,7 +678,7 @@ function verifyTerms() {
   if (!text) { out.textContent = ''; return; }
   const h = E.id(text);
   if (h === current.hash) {
-    store.set('terms:' + lc(current.addr), text);
+    store.set(termsKey(current.addr), text);
     out.innerHTML = '<span class="match">✓ Matches the on-chain hash. Saved in this browser.</span>';
   } else {
     out.innerHTML = `<span class="nomatch">✗ Does not match.</span> This text hashes to <span class="mono">${h}</span>. Every character counts, including spaces, capitals and line breaks.`;
@@ -650,9 +687,10 @@ function verifyTerms() {
 
 async function shareLink() {
   const p = new URLSearchParams();
+  p.set('net', NET.key);
   p.set('factory', factoryAddr());
   p.set('bet', current.addr);
-  const saved = store.get('terms:' + lc(current.addr));
+  const saved = savedTerms(current.addr);
   if (saved !== null && E.id(saved) === current.hash) p.set('terms', saved);
   const url = location.origin + location.pathname + '#' + p.toString();
   try { await navigator.clipboard.writeText(url); toast('Share link copied. The terms are included so the other player can verify them.', 'ok'); }
@@ -691,7 +729,20 @@ let pendingTerms = null;
 
 async function init() {
   document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
-  $('#connect').onclick = () => (account && onSepolia ? changeAccount() : connect(true)).catch(e => toast(esc(errMsg(e)), 'err'));
+  $('#connect').onclick = () => (account && onNet ? changeAccount() : connect(true)).catch(e => toast(esc(errMsg(e)), 'err'));
+  $('#network').value = NET.key;
+  $('#network').onchange = e => {
+    store.set('network', e.target.value);
+    location.hash = '';
+    location.reload();
+  };
+  // Pasting a share link for the other network into an open tab only changes the hash.
+  window.addEventListener('hashchange', () => {
+    const n = new URLSearchParams(location.hash.slice(1)).get('net');
+    if (NETWORKS[n] && n !== NET.key) location.reload();
+  });
+  document.querySelectorAll('.net-name').forEach(el => el.textContent = NET.name);
+  $('#mainnet-warning').hidden = NET.key !== 'mainnet';
   $('#save-factory').onclick = checkFactory;
   $('#create-form').addEventListener('submit', onCreate);
   $('#create-form').addEventListener('input', updateCreateHints);
@@ -709,7 +760,8 @@ async function init() {
 
   // Link fragment: #factory=0x..&bet=0x..&terms=...
   const frag = new URLSearchParams(location.hash.slice(1));
-  $('#factory').value = frag.get('factory') || store.get('factory') || '';
+  $('#factory').value = frag.get('factory') || store.get('factory:' + NET.key)
+    || (NET.key === 'sepolia' && store.get('factory')) || '';
   pendingTerms = frag.get('terms');
 
   if (window.ethereum) {

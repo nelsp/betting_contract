@@ -1,6 +1,6 @@
 # Bet Desk: instruction manual
 
-How to create a bet, fund it, settle it, and collect the winnings using Bet Desk on the Sepolia test network.
+How to create a bet, fund it, settle it, and collect the winnings using Bet Desk on the Sepolia test network or Ethereum Mainnet.
 
 ## Roles
 
@@ -17,6 +17,15 @@ How to create a bet, fund it, settle it, and collect the winnings using Bet Desk
 3. Get free Sepolia ETH from a faucet. You need enough for your stake plus a little for gas fees.
 4. Open Bet Desk: **https://nelsp.github.io/betting_contract/**
 5. Click **Connect MetaMask**. If you have several accounts, click **Change account** and tick the one you're using for this bet.
+
+### Choosing a network
+
+Use the selector next to the **Bet Desk** title:
+
+- **Sepolia testnet** (default): test ETH, no real value. Use it to practise.
+- **Ethereum Mainnet**: **real ETH**. A red banner reminds you. Every deposit and transaction costs real money and can't be undone.
+
+The page remembers a separate factory address for each network, and share links open on the network the bet lives on. MetaMask must be on the same network as the page; if it isn't, click **Switch to …** at the top.
 
 ## 1. Agree on the bet
 
@@ -87,9 +96,9 @@ There's no deadline to withdraw. Your balance stays in the contract until you co
 |---|---|
 | A button is greyed out | Read the note next to it. It says exactly why (wrong account, wrong state, too early, and so on). |
 | Page doesn't recognise your account | Click **Change account** and tick the right account. MetaMask only shares accounts you've connected to the site. |
-| "Wrong network" | Switch MetaMask to **Sepolia**. |
+| "Wrong network" | Switch MetaMask to the network shown in the page's selector, or click **Switch to …**. |
 | "No contract at that address" / "not a BetFactory" | Check the address. The factory and each bet have different addresses. |
 | Terms don't match the hash | The text differs from what was used at creation, even by a space or capital letter. Get the exact text from the creator. |
 | Wallet balance didn't change after settling | Expected. Money only moves on **Deposit** and **Withdraw**. |
 
-*This runs on the Sepolia test network with test ETH, which has no real value.*
+*On Sepolia everything uses test ETH, which has no real value. On Ethereum Mainnet it's real money: start with small stakes.*
